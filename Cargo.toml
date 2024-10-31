@@ -1,7 +1,11 @@
 [package]
-name = "ssl-expiration-checker"
+name = "cert-expiration-checker"
 version = "0.1.0"
 edition = "2021"
+
+[[bin]]
+name = "check"
+path = "src/main.rs"
 
 [dependencies]
 chrono = "0.4.38"

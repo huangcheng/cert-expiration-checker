@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use env::current_dir;
 
-use chrono::{TimeDelta, Utc};
+use chrono::{Local, TimeDelta};
 use clap::Parser;
 use ssl_expiration2::SslExpiration;
 use cli_table::{format::Justify, print_stdout, Cell, Style, Table};
@@ -36,7 +36,9 @@ fn main() {
     let f = get_file();
 
     if !f.exists() {
-        panic!("Could not found the file specified");
+        eprintln!("Could not found the file specified");
+
+        return;
     }
 
     let mut handles = Vec::new();
@@ -97,11 +99,11 @@ fn main() {
                 let expiration = SslExpiration::from_domain_name(&domain).unwrap();
 
                 let result = if expiration.is_expired() {
-                    vec![domain, String::from("已过期"), String::from("已过期")]
+                    vec![domain, String::from("Expired"), String::from("Expired")]
                 } else {
                     let days = expiration.days();
 
-                    let date = Utc::now();
+                    let date = Local::now();
 
                     let date = date.add(TimeDelta::days(days as i64));
 
@@ -123,7 +125,14 @@ fn main() {
         handle.join().unwrap();
     }
 
-    let rows = data.lock().unwrap();
+    let mut rows = data.lock().unwrap();
+
+    rows.sort_by(|a, b| {
+        let lhs = a.first().unwrap();
+        let rhs = b.first().unwrap();
+        
+        lhs.cmp(rhs)
+    });
 
     let mut table = vec![];
 
@@ -145,9 +154,11 @@ fn main() {
         )
     }
 
-    let table = table.table().title(
-        vec!["域名", "到期天数", "到期日期"]
-    ).bold(true);
+    let table = table.table().title(vec![
+            "Domain".cell(),
+            "Expire Days".cell().justify(Justify::Right),
+            "Expire Date".cell().justify(Justify::Right)
+        ]).bold(true);
 
     print_stdout(table).unwrap();
 }
