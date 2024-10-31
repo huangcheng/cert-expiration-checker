@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+chrono = "0.4.38"
+clap = { version = "4.5.20", features = ["derive"] }
+cli-table = "0.4.9"
+ssl-expiration2 = "0.4.0"
