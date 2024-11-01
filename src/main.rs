@@ -8,7 +8,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use env::current_dir;
-
+use std::process::exit;
+use std::sync::mpsc::channel;
 use chrono::{Local, TimeDelta};
 use clap::Parser;
 use ssl_expiration2::SslExpiration;
@@ -41,7 +42,7 @@ fn main() {
         return;
     }
 
-    let mut handles = Vec::new();
+    let mut workers: Vec<JoinHandle<()>> = Vec::new();
 
     let num_of_cpus = available_parallelism().unwrap();
 
@@ -50,6 +51,8 @@ fn main() {
     let data: Arc<Mutex<Vec<Vec<String>>>> = Arc::new(Mutex::new(Vec::new()));
 
     let finished = Arc::new(AtomicBool::new(false));
+
+    let (sender, receiver ) = channel::<bool>();
 
     {
         let _lines = lines.clone();
@@ -69,8 +72,6 @@ fn main() {
 
             _finished.store(true, Ordering::SeqCst);
         });
-
-        handles.push(handle);
     }
 
     for _ in 0 .. num_of_cpus.get() {
@@ -118,47 +119,61 @@ fn main() {
             }
         });
 
-        handles.push(handle);
+        workers.push(handle);
+
     }
 
-    for handle in handles {
-        handle.join().unwrap();
-    }
-
-    let mut rows = data.lock().unwrap();
-
-    rows.sort_by(|a, b| {
-        let lhs = a.first().unwrap();
-        let rhs = b.first().unwrap();
-        
-        lhs.cmp(rhs)
-    });
-
-    let mut table = vec![];
-
-    for row in rows.iter() {
-        if row.len() < 3 {
-            continue;
+    thread::spawn(move || {
+        for handle in workers {
+            handle.join().unwrap();
         }
 
-        let first = row.first().unwrap();
-        let second = row.get(1).unwrap();
-        let third = row.get(2).unwrap();
+        let mut rows = data.lock().unwrap();
 
-        table.push(
-            vec![
-                first.cell(),
-                second.cell().justify(Justify::Right),
-                third.cell().justify(Justify::Right)
-            ]
-        )
-    }
+        rows.sort_by(|a, b| {
+            let lhs = a.first().unwrap();
+            let rhs = b.first().unwrap();
 
-    let table = table.table().title(vec![
+            lhs.cmp(rhs)
+        });
+
+        let mut table = vec![];
+
+        for row in rows.iter() {
+            if row.len() < 3 {
+                continue;
+            }
+
+            let first = row.first().unwrap();
+            let second = row.get(1).unwrap();
+            let third = row.get(2).unwrap();
+
+            table.push(
+                vec![
+                    first.cell(),
+                    second.cell().justify(Justify::Right),
+                    third.cell().justify(Justify::Right)
+                ]
+            )
+        }
+
+        let table = table.table().title(vec![
             "Domain".cell(),
             "Expire Days".cell().justify(Justify::Right),
             "Expire Date".cell().justify(Justify::Right)
         ]).bold(true);
 
-    print_stdout(table).unwrap();
+        let result = print_stdout(table).is_ok();
+
+        sender.send(result).unwrap();
+    });
+
+    let result = receiver.recv().unwrap_or(false);
+
+    let code = match result {
+        true => 0,
+        false => -1
+    };
+
+    exit(code);
 }
