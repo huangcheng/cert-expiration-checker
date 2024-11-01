@@ -9,8 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use env::current_dir;
 use std::process::exit;
-use std::sync::mpsc::channel;
-use chrono::{Local, TimeDelta};
+use chrono::{TimeDelta, Utc};
 use clap::Parser;
 use ssl_expiration2::SslExpiration;
 use cli_table::{format::Justify, print_stdout, Cell, Style, Table};
@@ -52,14 +51,12 @@ fn main() {
 
     let finished = Arc::new(AtomicBool::new(false));
 
-    let (sender, receiver ) = channel::<bool>();
-
     {
         let _lines = lines.clone();
 
         let _finished = finished.clone();
 
-        let handle: JoinHandle<()> = thread::spawn(move || {
+        thread::spawn(move || {
             let content = read_to_string(f).unwrap_or(String::from(""));
 
             let lines = content.lines();
@@ -104,9 +101,11 @@ fn main() {
                 } else {
                     let days = expiration.days();
 
-                    let date = Local::now();
+                    let date = Utc::now();
 
                     let date = date.add(TimeDelta::days(days as i64));
+
+                    let date = date.naive_local();
 
                     let date = format!("{}", date.format("%Y-%m-%d"));
 
@@ -123,7 +122,7 @@ fn main() {
 
     }
 
-    thread::spawn(move || {
+    let handle: JoinHandle<bool> = thread::spawn(move || {
         for handle in workers {
             handle.join().unwrap();
         }
@@ -131,10 +130,13 @@ fn main() {
         let mut rows = data.lock().unwrap();
 
         rows.sort_by(|a, b| {
-            let lhs = a.first().unwrap();
-            let rhs = b.first().unwrap();
+            let lhs = a.get(1).unwrap();
+            let rhs = b.get(1).unwrap();
 
-            lhs.cmp(rhs)
+            let lhs = lhs.parse::<i32>().unwrap();
+            let rhs = rhs.parse::<i32>().unwrap();
+
+            lhs.cmp(&rhs)
         });
 
         let mut table = vec![];
@@ -163,12 +165,10 @@ fn main() {
             "Expire Date".cell().justify(Justify::Right)
         ]).bold(true);
 
-        let result = print_stdout(table).is_ok();
-
-        sender.send(result).unwrap();
+        print_stdout(table).is_ok()
     });
 
-    let result = receiver.recv().unwrap_or(false);
+    let result = handle.join().unwrap();
 
     let code = match result {
         true => 0,
