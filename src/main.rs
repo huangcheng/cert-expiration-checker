@@ -59,7 +59,7 @@ fn main() {
         thread::spawn(move || {
             let content = read_to_string(f).unwrap_or(String::from(""));
 
-            let lines = content.lines();
+            let lines = content.lines().filter(|line| !(*line).is_empty());
 
             let mut vec = _lines.lock().unwrap();
 
