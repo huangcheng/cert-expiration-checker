@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use env::current_dir;
+use std::num::NonZero;
 use std::process::exit;
 use chrono::{TimeDelta, Utc};
 use clap::Parser;
@@ -43,13 +44,13 @@ fn main() {
 
     let mut workers: Vec<JoinHandle<()>> = Vec::new();
 
-    let num_of_cpus = available_parallelism().unwrap();
+    let num_of_cpus: NonZero<usize> = available_parallelism().unwrap_or(NonZero::new(4usize).unwrap());
 
     let lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
     let data: Arc<Mutex<Vec<Vec<String>>>> = Arc::new(Mutex::new(Vec::new()));
 
-    let finished = Arc::new(AtomicBool::new(false));
+    let finished: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 
     {
         let _lines = lines.clone();
